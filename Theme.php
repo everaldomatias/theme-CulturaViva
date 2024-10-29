@@ -66,6 +66,8 @@ class Theme extends \MapasCulturais\Themes\BaseV2\Theme
                     $_where = "rcv_pcache.user = {$app->user->id} OR ($_where)";
                 }
             }
+
+            $where .= "AND ($_where)";
         });
     }
 
