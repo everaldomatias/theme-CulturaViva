@@ -89,6 +89,57 @@ class Theme extends \MapasCulturais\Themes\BaseV2\Theme
 
             $where .= " AND ({$_where})";
         });
+
+        // versão anterior do filtro de espaço feito com subquery
+        // $app->hook('ApiQuery(Space).params', function (&$api_params) use($seals, $theme, $app) {
+        //     /** @var ApiQuery $this */
+        //     if($app->config['rcv.disableApiFilters']) {
+        //         return;
+        //     }
+        //     $agent_query = new ApiQuery(AgentMeta::class, ['@select' => 'value', 'key' => API::EQ('rcv_sede_spaceId')]);
+        //     $this->addFilterByApiQuery($agent_query, 'value', 'id');
+        // });
+
+        $app->hook('ApiQuery(Space).joins', function (&$joins) use($seals, $theme, $app) {
+            if($app->config['rcv.disableApiFilters']) {
+                return;
+            }
+            
+            $agent_meta_class = AgentMeta::class;
+            $joins .= "
+                JOIN e.owner rcv_space_owner
+                JOIN $agent_meta_class rcv_space_owner_meta
+                    WITH rcv_space_owner_meta.key = 'rcv_sede_spaceId'
+                JOIN rcv_space_owner_meta.owner rcv_space_owner_meta_agent 
+                    WITH rcv_space_owner_meta_agent.user = rcv_space_owner.user";
+
+            
+            if($app->auth->isUserAuthenticated() && !$app->user->is('admin')) {
+                $joins .= " 
+                    LEFT JOIN e.__permissionsCache rcv_pcache_space 
+                        WITH rcv_pcache_space.action = '@control'";
+            }
+        });
+
+        $app->hook('ApiQuery(Space).where', function (&$where) use($theme, $app) {
+            /** @var ApiQuery $this */
+
+            if($app->config['rcv.disableApiFilters']) {
+                return;
+            }
+
+            $_where = "CAST(rcv_space_owner_meta.value AS INTEGER) = e.id";
+
+            if($app->auth->isUserAuthenticated()) {
+                if($app->user->is('admin')) {
+                    $_where = "rcv_space_owner.user = {$app->user->id} OR ($_where)";
+                } else {
+                    $_where = "rcv_pcache_space.user = {$app->user->id} OR ($_where)";
+                }
+            }
+
+            $where .= " AND ({$_where})";
+        });
     }
 
     function canUserControlRCV() {
