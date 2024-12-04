@@ -3,8 +3,12 @@
 namespace CulturaViva;
 
 use MapasCulturais\API;
+use MapasCulturais\ApiQuery;
 use MapasCulturais\App;
+use MapasCulturais\Entities\Agent;
+use MapasCulturais\Entities\AgentMeta;
 use MapasCulturais\Entities\Opportunity;
+use PhpOffice\PhpSpreadsheet\IOFactory;
 
 class Theme extends \MapasCulturais\Themes\BaseV2\Theme
 {
@@ -29,7 +33,12 @@ class Theme extends \MapasCulturais\Themes\BaseV2\Theme
 
         $theme = $this;
 
-        $app->hook('ApiQuery(Agent).params', function (&$api_params) use($seals, $theme) {
+        $app->hook('ApiQuery(Agent).params', function (&$api_params) use($seals, $theme, $app) {
+            /** @var ApiQuery $this */
+            
+            if($app->config['rcv.disableApiFilters']) {
+                return;
+            }
             if (!isset($api_params['type']) && !isset($api_params['id']) && !isset($api_params['parent']) && !isset($api_params['owner']) && !isset($api_params['user'])) {
                 $api_params['type'] = API::EQ(2);
             }
@@ -37,10 +46,15 @@ class Theme extends \MapasCulturais\Themes\BaseV2\Theme
 
 
         $app->hook('ApiQuery(Agent).joins', function (&$joins) use($seals, $theme, $app) {
+            /** @var ApiQuery $this */
+
+            if($app->config['rcv.disableApiFilters']) {
+                return;
+            }
             $joins .= "
                 LEFT JOIN e.__metadata rcv_tipo 
                     WITH rcv_tipo.key = 'rcv_tipo'";
-
+            
             if(!$theme->canUserControlRCV()) {
                 $joins .= "
                     LEFT JOIN e.__sealRelations rcv_sealRelations
@@ -48,11 +62,17 @@ class Theme extends \MapasCulturais\Themes\BaseV2\Theme
             }
 
             if($app->auth->isUserAuthenticated() && !$app->user->is('admin')) {
-                $joins .= " LEFT JOIN e.__permissionsCache rcv_pcache WITH pcache.action = '@control'";
+                $joins .= " LEFT JOIN e.__permissionsCache rcv_pcache_agent WITH rcv_pcache_agent.action = '@control'";
             }
         });
 
         $app->hook('ApiQuery(Agent).where', function (&$where) use($theme, $app) {
+            /** @var ApiQuery $this */
+
+            if($app->config['rcv.disableApiFilters']) {
+                return;
+            }
+
             $_where = "((e._type = 2 AND rcv_tipo.value = 'ponto') OR e._type = 1)";
 
             if(!$theme->canUserControlRCV()) {
@@ -63,11 +83,11 @@ class Theme extends \MapasCulturais\Themes\BaseV2\Theme
                 if($app->user->is('admin')) {
                     $_where = "e.user = {$app->user->id} OR ($_where)";
                 } else {
-                    $_where = "rcv_pcache.user = {$app->user->id} OR ($_where)";
+                    $_where = "rcv_pcache_agent.user = {$app->user->id} OR ($_where)";
                 }
             }
 
-            $where .= "AND ($_where)";
+            $where .= " AND ({$_where})";
         });
     }
 
